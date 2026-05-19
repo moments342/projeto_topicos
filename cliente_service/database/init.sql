@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS cidade (
+    serial SERIAL PRIMARY KEY,
+    nome VARCHAR(100) NOT NULL,
+    uf CHAR(2) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cliente (
+    serial SERIAL PRIMARY KEY,
+    nome VARCHAR(150) NOT NULL,
+    cpf VARCHAR(14) NOT NULL UNIQUE,
+    data_nascimento DATE NOT NULL,
+    endereco VARCHAR(255),
+    cidade INTEGER REFERENCES cidade(serial)
+);
+
+INSERT INTO cidade (nome, uf)
+VALUES
+('DOURADOS', 'MS'),
+('FATIMA DO SUL', 'MS'),
+('CAMPO GRANDE', 'MS')
+ON CONFLICT DO NOTHING;

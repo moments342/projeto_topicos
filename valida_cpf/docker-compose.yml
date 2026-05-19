@@ -1,0 +1,7 @@
+version: '3.8'
+
+services:
+  valida_cpf:
+    build: .
+    ports:
+      - "3001:3001"

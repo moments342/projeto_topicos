@@ -1,0 +1,111 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cliente Service Frontend</title>
+
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="grey lighten-4">
+
+  <nav class="blue darken-2">
+    <div class="nav-wrapper container">
+      <a href="#" class="brand-logo">Clientes</a>
+    </div>
+  </nav>
+
+  <main class="container section">
+    <div class="row">
+      <div class="col s12">
+        <div class="card">
+          <div class="card-content">
+            <span class="card-title">Cadastro de Clientes</span>
+
+            <form id="clienteForm">
+              <input type="hidden" id="clienteId" />
+
+              <div class="row">
+                <div class="input-field col s12 m6">
+                  <input id="nome" type="text" required />
+                  <label for="nome">Nome</label>
+                </div>
+
+                <div class="input-field col s12 m6">
+                  <input id="cpf" type="text" required />
+                  <label for="cpf">CPF</label>
+                </div>
+              </div>
+
+              <div class="row">
+                <div class="input-field col s12 m6">
+                  <input id="dataNascimento" type="date" required />
+                  <label class="active" for="dataNascimento">Data de Nascimento</label>
+                </div>
+
+                <div class="input-field col s12 m6">
+                  <input id="cidade" type="number" required />
+                  <label for="cidade">Código da Cidade</label>
+                </div>
+              </div>
+
+              <div class="row">
+                <div class="input-field col s12">
+                  <input id="endereco" type="text" required />
+                  <label for="endereco">Endereço</label>
+                </div>
+              </div>
+
+              <div class="row">
+                <div class="col s12">
+                  <button class="btn blue waves-effect waves-light" type="submit">
+                    Salvar
+                    <i class="material-icons right">save</i>
+                  </button>
+
+                  <button id="cancelarBtn" type="button" class="btn grey waves-effect waves-light">
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col s12">
+        <div class="card">
+          <div class="card-content">
+            <span class="card-title">Lista de Clientes</span>
+
+            <table class="highlight responsive-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Nome</th>
+                  <th>CPF</th>
+                  <th>Data Nascimento</th>
+                  <th>Cidade</th>
+                  <th>UF</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+
+              <tbody id="clientesTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
