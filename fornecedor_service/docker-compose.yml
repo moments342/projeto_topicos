@@ -1,0 +1,31 @@
+services:
+  fornecedor_service:
+    build: .
+    container_name: fornecedor_service
+    ports:
+      - "3002:3002"
+    environment:
+      DB_HOST: db_fornecedores
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: fornecedores_db
+      DB_PORT: 5432
+      PORT: 3002
+    depends_on:
+      - db_fornecedores
+
+  db_fornecedores:
+    image: postgres:16
+    container_name: db_fornecedores
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: fornecedores_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - fornecedores_data:/var/lib/postgresql/data
+
+volumes:
+  fornecedores_data:
