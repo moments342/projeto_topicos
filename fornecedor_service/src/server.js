@@ -8,6 +8,21 @@ const PORT = process.env.PORT || 3002;
 app.use(cors());
 app.use(express.json());
 
+app.get("/fornecedores/cnpj/:cnpj", async (req, res) => {
+    try {
+        const { cnpj } = req.params;
+        const result = await pool.query("SELECT * FROM fornecedores WHERE cnpj = $1", [cnpj]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ erro: "Fornecedor não encontrado" });
+        }
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        res.status(500).json({ erro: "Erro ao buscar fornecedor por CNPJ" });
+    }
+});
+
 app.get("/fornecedores/:id", async (req, res) => {
     try {
         const { id } = req.params;
