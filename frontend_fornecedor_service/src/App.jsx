@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const apiBaseUrl = (import.meta.env.VITE_API_URL || "http://localhost:3002").replace(
   /\/$/,
@@ -14,13 +14,53 @@ const emptyFornecedor = {
   financeiro: ""
 };
 
+function formatCnpj(value) {
+  const digits = value.replace(/\D/g, "").slice(0, 14);
+
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 5) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+  if (digits.length <= 8) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`;
+  if (digits.length <= 12) {
+    return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`;
+  }
+
+  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+}
+
+function formatInscricaoEstadual(value) {
+  const digits = value.replace(/\D/g, "").slice(0, 14);
+
+  if (!digits) {
+    return "";
+  }
+
+  return digits.match(/.{1,3}/g)?.join(".") || digits;
+}
+
+function normalizeDigits(value) {
+  return value.replace(/\D/g, "");
+}
+
 function App() {
   const [fornecedor, setFornecedor] = useState(() => ({ ...emptyFornecedor }));
+  const [fornecedores, setFornecedores] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [feedback, setFeedback] = useState(null);
+  const [searchCnpj, setSearchCnpj] = useState("");
+  const [isSearchActive, setIsSearchActive] = useState(false);
+  const [searchedCnpj, setSearchedCnpj] = useState("");
+  const [listError, setListError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isLoadingEdit, setIsLoadingEdit] = useState(false);
+  const [loadingEditId, setLoadingEditId] = useState(null);
+  const [isLoadingList, setIsLoadingList] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
+  useEffect(() => {
+    loadFornecedores();
+  }, []);
 
   async function readErrorMessage(response, fallbackMessage) {
     try {
@@ -31,12 +71,100 @@ function App() {
     }
   }
 
+  async function loadFornecedores() {
+    setIsLoadingList(true);
+    setListError("");
+
+    try {
+      const response = await fetch(fornecedoresUrl);
+
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response, "Erro ao buscar fornecedores"));
+      }
+
+      const data = await response.json();
+      setFornecedores(data);
+      setIsSearchActive(false);
+      setSearchedCnpj("");
+    } catch (error) {
+      setFornecedores([]);
+      setListError(error.message || "Erro ao buscar fornecedores");
+    } finally {
+      setIsLoadingList(false);
+    }
+  }
+
+  async function searchFornecedorByCnpj(cnpj) {
+    setIsLoadingList(true);
+    setListError("");
+
+    try {
+      const normalizedCnpj = normalizeDigits(cnpj);
+      const maskedCnpj = formatCnpj(cnpj);
+      const candidates = [...new Set([maskedCnpj, normalizedCnpj].filter(Boolean))];
+      let foundFornecedor = null;
+
+      for (const candidate of candidates) {
+        const response = await fetch(
+          `${fornecedoresUrl}/cnpj/${encodeURIComponent(candidate)}`
+        );
+
+        if (response.status === 404) {
+          continue;
+        }
+
+        if (!response.ok) {
+          throw new Error(
+            await readErrorMessage(response, "Erro ao buscar fornecedor por CNPJ")
+          );
+        }
+
+        foundFornecedor = await response.json();
+        break;
+      }
+
+      if (!foundFornecedor) {
+        setFornecedores([]);
+        setIsSearchActive(true);
+        setSearchedCnpj(maskedCnpj || cnpj);
+        return;
+      }
+
+      setFornecedores([foundFornecedor]);
+      setIsSearchActive(true);
+      setSearchedCnpj(maskedCnpj || cnpj);
+    } catch (error) {
+      setFornecedores([]);
+      setListError(error.message || "Erro ao buscar fornecedor por CNPJ");
+    } finally {
+      setIsLoadingList(false);
+    }
+  }
+
+  async function refreshCurrentView() {
+    const cnpj = searchCnpj.trim() || searchedCnpj.trim();
+
+    if (isSearchActive && cnpj) {
+      await searchFornecedorByCnpj(cnpj);
+      return;
+    }
+
+    await loadFornecedores();
+  }
+
   function handleChange(event) {
     const { name, value } = event.target;
 
+    const maskedValue =
+      name === "cnpj"
+        ? formatCnpj(value)
+        : name === "inscricao_estadual"
+          ? formatInscricaoEstadual(value)
+          : value;
+
     setFornecedor((currentFornecedor) => ({
       ...currentFornecedor,
-      [name]: value
+      [name]: maskedValue
     }));
   }
 
@@ -56,18 +184,13 @@ function App() {
     setIsFormModalOpen(true);
   }
 
-  async function handleEditClick() {
-    const id = window.prompt("Informe o ID do fornecedor para editar:");
-
-    if (!id || !id.trim()) {
-      return;
-    }
-
+  async function handleEditClick(id) {
     setIsLoadingEdit(true);
+    setLoadingEditId(id);
     setFeedback(null);
 
     try {
-      const response = await fetch(`${fornecedoresUrl}/${id.trim()}`);
+      const response = await fetch(`${fornecedoresUrl}/${id}`);
 
       if (!response.ok) {
         throw new Error(await readErrorMessage(response, "Erro ao buscar fornecedor"));
@@ -77,8 +200,8 @@ function App() {
 
       setFornecedor({
         razao_social: data.razao_social || "",
-        cnpj: data.cnpj || "",
-        inscricao_estadual: data.inscricao_estadual || "",
+        cnpj: formatCnpj(data.cnpj || ""),
+        inscricao_estadual: formatInscricaoEstadual(data.inscricao_estadual || ""),
         contatos: data.contatos || "",
         financeiro: data.financeiro || ""
       });
@@ -91,6 +214,7 @@ function App() {
       });
     } finally {
       setIsLoadingEdit(false);
+      setLoadingEditId(null);
     }
   }
 
@@ -143,6 +267,7 @@ function App() {
       });
 
       closeFormModal();
+      await refreshCurrentView();
     } catch (error) {
       setFeedback({
         type: "error",
@@ -151,6 +276,136 @@ function App() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  async function handleSearchSubmit(event) {
+    event.preventDefault();
+
+    const cnpj = searchCnpj.trim();
+
+    if (!cnpj) {
+      await loadFornecedores();
+      return;
+    }
+
+    await searchFornecedorByCnpj(cnpj);
+  }
+
+  async function handleClearSearch() {
+    setSearchCnpj("");
+    await loadFornecedores();
+  }
+
+  function handleDeleteRequest(item) {
+    setDeleteTarget(item);
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setFeedback(null);
+
+    try {
+      const response = await fetch(`${fornecedoresUrl}/${deleteTarget.id}`, {
+        method: "DELETE"
+      });
+
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response, "Erro ao excluir fornecedor"));
+      }
+
+      setFeedback({
+        type: "success",
+        message: "Fornecedor excluido com sucesso"
+      });
+      setDeleteTarget(null);
+      await refreshCurrentView();
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: error.message || "Erro ao excluir fornecedor"
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  function renderTableBody() {
+    if (isLoadingList) {
+      return (
+        <tr>
+          <td colSpan="5" className="px-4 py-8 text-center text-sm text-slate-500">
+            Carregando fornecedores...
+          </td>
+        </tr>
+      );
+    }
+
+    if (listError) {
+      return (
+        <tr>
+          <td colSpan="5" className="px-4 py-8 text-center text-sm text-rose-600">
+            Erro ao buscar fornecedores
+          </td>
+        </tr>
+      );
+    }
+
+    if (fornecedores.length === 0 && isSearchActive) {
+      return (
+        <tr>
+          <td colSpan="5" className="px-4 py-8 text-center text-sm text-slate-500">
+            Nenhum fornecedor encontrado para este CNPJ
+          </td>
+        </tr>
+      );
+    }
+
+    if (fornecedores.length === 0) {
+      return (
+        <tr>
+          <td colSpan="5" className="px-4 py-8 text-center text-sm text-slate-500">
+            Nenhum fornecedor cadastrado
+          </td>
+        </tr>
+      );
+    }
+
+    return fornecedores.map((item) => (
+      <tr key={item.id} className="border-b border-slate-100">
+        <td className="px-4 py-4 text-sm text-slate-700">{item.id}</td>
+        <td className="px-4 py-4 text-sm text-slate-700">{item.razao_social}</td>
+        <td className="px-4 py-4 text-sm text-slate-700">{formatCnpj(item.cnpj || "")}</td>
+        <td className="px-4 py-4 text-sm text-slate-700">
+          {item.inscricao_estadual
+            ? formatInscricaoEstadual(item.inscricao_estadual)
+            : "-"}
+        </td>
+        <td className="px-4 py-4">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => handleEditClick(item.id)}
+              disabled={isLoadingEdit}
+              className="rounded-md bg-blue-500 px-3 py-2 text-xs font-medium text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isLoadingEdit && loadingEditId === item.id ? "Abrindo..." : "Editar"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleDeleteRequest(item)}
+              className="rounded-md bg-red-500 px-3 py-2 text-xs font-medium text-white transition hover:bg-red-600"
+            >
+              Excluir
+            </button>
+          </div>
+        </td>
+      </tr>
+    ));
   }
 
   const isEditing = editingId !== null;
@@ -181,12 +436,39 @@ function App() {
         )}
 
         <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-md">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              Pesquisar fornecedor - Implementar campo de pesquisa
-            </div>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <form className="flex-1" onSubmit={handleSearchSubmit}>
+              <label className="mb-2 block text-sm font-medium text-slate-600">
+                Buscar fornecedor por CNPJ
+              </label>
 
-            <div className="md:self-end">
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <input
+                  type="text"
+                  value={searchCnpj}
+                  onChange={(event) => setSearchCnpj(formatCnpj(event.target.value))}
+                  placeholder="00.000.000/0000-00"
+                  className="h-11 flex-1 rounded-md border border-slate-300 px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+
+                <button
+                  type="submit"
+                  className="rounded-md bg-blue-500 px-4 py-3 text-sm font-medium text-white transition hover:bg-blue-600"
+                >
+                  Buscar
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleClearSearch}
+                  className="rounded-md border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                >
+                  Limpar
+                </button>
+              </div>
+            </form>
+
+            <div className="lg:self-end">
               <button
                 type="button"
                 onClick={openCreateModal}
@@ -199,27 +481,36 @@ function App() {
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-md">
-          <div className="space-y-4">
-            <p>
-              Lista de Fornecedores - Implementar listagem de fornecedores cadastrados,
-              com as acoes de editar e excluir cada fornecedor. A listagem deve ser
-              atualizada apos cada operacao de cadastro, edicao ou exclusao.
-            </p>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-2xl font-semibold text-slate-900">Lista de Fornecedores</h2>
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <button
-                type="button"
-                onClick={handleEditClick}
-                disabled={isLoadingEdit}
-                className="rounded-md bg-blue-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isLoadingEdit ? "Abrindo..." : "Editar"}
-              </button>
+            <button
+              type="button"
+              onClick={refreshCurrentView}
+              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              Atualizar
+            </button>
+          </div>
 
-              <span>
-                Botao funcional de editar: informe o ID para carregar o modal de edicao.
-              </span>
-            </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full border-collapse">
+              <thead>
+                <tr className="border-b border-slate-200 text-left">
+                  <th className="px-4 py-3 text-sm font-semibold text-slate-700">ID</th>
+                  <th className="px-4 py-3 text-sm font-semibold text-slate-700">
+                    Razao Social
+                  </th>
+                  <th className="px-4 py-3 text-sm font-semibold text-slate-700">CNPJ</th>
+                  <th className="px-4 py-3 text-sm font-semibold text-slate-700">
+                    Inscricao Estadual
+                  </th>
+                  <th className="px-4 py-3 text-sm font-semibold text-slate-700">Acoes</th>
+                </tr>
+              </thead>
+
+              <tbody>{renderTableBody()}</tbody>
+            </table>
           </div>
         </section>
       </div>
@@ -291,6 +582,40 @@ function App() {
               </button>
             </div>
           </form>
+        </ModalShell>
+      )}
+
+      {deleteTarget && (
+        <ModalShell title="Excluir fornecedor" onClose={() => setDeleteTarget(null)}>
+          <div className="space-y-4">
+            <p className="text-sm text-slate-700">
+              Tem certeza que deseja excluir este fornecedor?
+            </p>
+
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              <strong>{deleteTarget.razao_social}</strong>
+              <div>CNPJ: {formatCnpj(deleteTarget.cnpj || "")}</div>
+            </div>
+
+            <div className="flex flex-col gap-3 pt-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="rounded-md bg-red-500 px-4 py-3 text-sm font-medium text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isDeleting ? "Excluindo..." : "Excluir fornecedor"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="rounded-md bg-slate-500 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-600"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
         </ModalShell>
       )}
     </main>
